@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import { logActivity } from "@/lib/activity";
 import { countryName, isKnownCountry } from "@/lib/countries";
 import { requirePrisma } from "@/lib/prisma";
+import { clientIp, enforceRateLimit } from "@/lib/rate-limit";
 import { revalidateHome, revalidateStore } from "@/lib/revalidate";
 import { getSettings } from "@/lib/settings";
 import { shippingCost } from "@/lib/shipping";
@@ -27,7 +28,10 @@ function makeOrderNumber(now = new Date()): string {
   const yy = String(now.getFullYear()).slice(2);
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const dd = String(now.getDate()).padStart(2, "0");
-  return `WNT-${yy}${mm}${dd}-${randomBytes(2).toString("hex").toUpperCase()}`;
+  // The random part is the only secret guarding the guest tracker, which
+  // exposes the customer's name and city. 5 bytes = 40 bits, so a day of
+  // orders cannot be enumerated; the date prefix stays readable.
+  return `WNT-${yy}${mm}${dd}-${randomBytes(5).toString("hex").toUpperCase()}`;
 }
 
 /** Guest-visible order tracker: returns only non-sensitive fields. */
@@ -119,6 +123,14 @@ export async function placeOrder(
     requested = [];
   }
   if (requested.length === 0) return { status: "error", message: "empty" };
+
+  // Only fully valid submissions consume quota, so a customer who mistypes a
+  // field is not punished; the cap then stops one address from draining stock
+  // with a loop of otherwise-valid orders.
+  const waitFor = await enforceRateLimit("order", await clientIp(), 5, 10 * 60_000);
+  if (waitFor !== null) {
+    return { status: "error", message: `طلبات كثيرة خلال وقت قصير. حاول بعد ${Math.max(1, Math.ceil(waitFor / 60))} دقيقة.` };
+  }
 
   const settings = await getSettings();
   const ship = shippingCost(country, city, settings);

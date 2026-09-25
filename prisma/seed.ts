@@ -132,8 +132,11 @@ async function main() {
 
   if (!email || !password) {
     console.warn("  ! ADMIN_EMAIL / ADMIN_PASSWORD not set — skipping admin user creation");
-  } else if (password.length < 8) {
-    console.warn("  ! ADMIN_PASSWORD must be at least 8 characters — skipping admin user creation");
+  } else if (password.length < 12) {
+    console.warn(
+      "  ! ADMIN_PASSWORD is shorter than 12 characters ? admin user NOT created.\n" +
+        "    Set a stronger ADMIN_PASSWORD in Vercel and redeploy, or create the account from /admin.",
+    );
   } else {
     const admin = await prisma.adminUser.findUnique({ where: { email } });
     if (admin) {

@@ -126,7 +126,7 @@ export async function changeAdminPassword(formData: FormData): Promise<void> {
   const confirm = String(formData.get("confirm") ?? "");
 
   const schema = z
-    .object({ next: z.string().min(8, "weak"), confirm: z.string() })
+    .object({ next: z.string().min(12, "weak"), confirm: z.string() })
     .refine((v) => v.next === v.confirm, { message: "mismatch" });
   if (!schema.safeParse({ next, confirm }).success) redirect("/admin/settings?error=password");
 

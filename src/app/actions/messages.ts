@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { logActivity } from "@/lib/activity";
 import { requirePrisma } from "@/lib/prisma";
+import { clientIp, enforceRateLimit } from "@/lib/rate-limit";
 
 export type ContactFormState = {
   status: "idle" | "error" | "success";
@@ -47,6 +48,12 @@ export async function sendMessage(
   }
 
   const { name, email, phone, subject, body } = parsed.data;
+
+  // Cap how fast one address can fill the inbox.
+  const waitFor = await enforceRateLimit("message", await clientIp(), 5, 10 * 60_000);
+  if (waitFor !== null) {
+    return { status: "error", message: `تجاوزت الحد. حاول بعد ${Math.max(1, Math.ceil(waitFor / 60))} دقيقة.` };
+  }
 
   try {
     const prisma = requirePrisma();
