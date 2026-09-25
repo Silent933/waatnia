@@ -1,0 +1,189 @@
+// waatnia — audiobook story store
+// Prices are stored as integer minor units ("cents") to avoid float drift.
+// The base currency is SAR; USD and SYP are derived via the SiteSetting rates.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id       Int     @id @default(autoincrement())
+  slug     String  @unique
+  nameAr   String
+  nameEn   String
+  sort     Int     @default(0)
+  books    Book[]
+
+  @@map("categories")
+}
+
+model Book {
+  id          Int      @id @default(autoincrement())
+  sourceId    Int      @unique // id from the source PDFs (1..112)
+  slug        String   @unique // latin slug, stable across both locales
+  titleAr     String
+  titleEn     String
+  descAr      String   @db.Text
+  descEn      String   @db.Text
+  author      String?
+  authorAr    String?
+  cover       String // public path, e.g. /covers/001-....png
+  priceCents  Int      @default(3000) // SAR minor units; 3000 = 30.00 SAR
+  stock       Int      @default(0)
+  isCd        Boolean  @default(false) // the "قصص CD" badge from the PDF
+  active      Boolean  @default(true)
+  categoryId  Int?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sourcePage  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // denormalised haystack: titleAr + titleEn + descAr + descEn, lowercased.
+  // Kept in sync on every write so bilingual search stays a single indexed lookup.
+  searchText  String   @db.Text
+
+  orderItems  OrderItem[]
+
+  @@index([categoryId])
+  @@index([active])
+  @@map("books")
+}
+
+model Order {
+  id             Int      @id @default(autoincrement())
+  number         String   @unique // human-facing, e.g. WNT-250926-4F7A
+  customerName   String
+  phone          String
+  country        String   // ISO-3166 alpha-2, e.g. SY
+  countryAr      String
+  city           String
+  address        String   @db.Text
+  note           String?  @db.Text
+  paymentMethod  String   // "cod" | "bank"
+  status         String   @default("new") // new|confirmed|shipped|delivered|cancelled
+  subtotalCents  Int
+  shippingCents  Int      @default(0)
+  totalCents     Int
+  freeShipping   Boolean  @default(false)
+  locale         String   @default("ar")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  items          OrderItem[]
+
+  @@index([status])
+  @@index([phone])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id            Int      @id @default(autoincrement())
+  orderId       Int
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  bookId        Int?
+  book          Book?    @relation(fields: [bookId], references: [id], onDelete: SetNull)
+  // snapshot so historical orders stay correct after a book is edited/renamed/deleted
+  titleAr       String
+  titleEn       String
+  cover         String
+  unitPriceCents Int
+  quantity      Int
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String?
+  phone     String?
+  subject   String?
+  body      String   @db.Text
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([isRead])
+  @@map("messages")
+}
+
+model ActivityLog {
+  id        Int      @id @default(autoincrement())
+  actor     String   @default("admin")
+  action    String   // order.created | book.updated | ...
+  entity    String   // order | book | category | message | setting
+  entityId  String?
+  summary   String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+  @@map("activity_logs")
+}
+
+model AdminUser {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  name         String   @default("Admin")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("admin_users")
+}
+
+/// Single-row table (id = 1) holding everything the shop owner can tune.
+model SiteSetting {
+  id     Int @id @default(1)
+
+  // --- exchange rates, all relative to 1 SAR ---
+  usdPerSar Float @default(3.75)
+  sypPerSar Float @default(40)
+
+  // --- pricing ---
+  defaultPriceCents Int     @default(3000)
+  currencyDefault   String  @default("USD") // USD | SAR | SYP
+
+  // --- shipping ---
+  shippingFlatCents Int     @default(5000) // charged outside the free zones
+  freeCountries     Json    @default("[\"SY\",\"SA\"]") // ISO-3166 alpha-2
+  freeCities        Json    @default("[\"الرياض\",\"Riyadh\"]")
+
+  // --- store identity ---
+  storeNameAr String @default("قصصنا")
+  storeNameEn String @default("Waatnia Stories")
+  taglineAr   String @default("متجر قصص ومسلسلات صوتية")
+  taglineEn   String @default("Audio story & serial store")
+
+  // --- contact ---
+  contactPhone    String?
+  contactWhatsapp String?
+  contactEmail    String?
+  contactAddressAr String?
+  contactAddressEn String?
+
+  // --- bank transfer details shown at checkout ---
+  bankName        String?
+  bankAccountName String?
+  bankIban        String?
+
+  // --- misc ---
+  instagramUrl String?
+  facebookUrl  String?
+  telegramUrl  String?
+  siteUrl      String?
+  seoTitleAr   String?
+  seoTitleEn   String?
+  seoDescAr    String? @db.Text
+  seoDescEn    String? @db.Text
+
+  updatedAt DateTime @updatedAt
+
+  @@map("site_settings")
+}
