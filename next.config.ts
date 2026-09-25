@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The store lives entirely under a [lang] segment (/ar, /en) so that every
+  // page can set its own lang and dir, and there are two root layouts. That
+  // leaves "/" matching no route at all, which is what a visitor typing the
+  // bare domain would hit. Point it at the default locale before routing.
+  // Temporary (307) rather than permanent: a browser that has cached a 308
+  // will not come back here to pick up a changed default.
+  async redirects() {
+    return [{ source: "/", destination: "/ar", permanent: false }];
+  },
   async headers() {
     return [
       {
