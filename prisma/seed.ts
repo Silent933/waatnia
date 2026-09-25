@@ -10,6 +10,8 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
+import { ADMIN_EMAIL } from "../src/lib/constants";
+
 import arTitles from "../data/ar-titles.json";
 import catalog from "../data/catalog.json";
 import siteJson from "../data/site.json";
@@ -127,14 +129,16 @@ async function main() {
   console.log("  settings: row id=1 ensured");
 
   // --- admin ------------------------------------------------------------
-  const email = (process.env.ADMIN_EMAIL ?? "").trim().toLowerCase();
+  // The owner signs in with a password only; the email is an internal
+  // identifier shared with src/lib/constants.ts and never typed by anyone.
+  const email = ADMIN_EMAIL;
   const password = process.env.ADMIN_PASSWORD ?? "";
 
-  if (!email || !password) {
-    console.warn("  ! ADMIN_EMAIL / ADMIN_PASSWORD not set — skipping admin user creation");
+  if (!password) {
+    console.warn("  ! ADMIN_PASSWORD not set — skipping admin user creation");
   } else if (password.length < 12) {
     console.warn(
-      "  ! ADMIN_PASSWORD is shorter than 12 characters ? admin user NOT created.\n" +
+      "  ! ADMIN_PASSWORD is shorter than 12 characters — admin user NOT created.\n" +
         "    Set a stronger ADMIN_PASSWORD in Vercel and redeploy, or create the account from /admin.",
     );
   } else {

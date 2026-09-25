@@ -22,12 +22,17 @@ export function LoginForm() {
   return (
     <form action={formAction} className="card p-6">
       <div>
-        <label className="label" htmlFor="email">البريد الإلكتروني</label>
-        <input id="email" name="email" type="email" className="field" required autoComplete="username" dir="ltr" />
-      </div>
-      <div className="mt-4">
         <label className="label" htmlFor="password">كلمة المرور</label>
-        <input id="password" name="password" type="password" className="field" required autoComplete="current-password" dir="ltr" />
+        <input
+          id="password"
+          name="password"
+          type="password"
+          className="field"
+          required
+          autoComplete="current-password"
+          autoFocus
+          dir="ltr"
+        />
       </div>
 
       {state.error && (
