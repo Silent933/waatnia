@@ -10,6 +10,11 @@ export function dir(locale: Locale) {
   return locale === "ar" ? "rtl" : "ltr";
 }
 
+/** Request header `proxy` sets to tell the global 404 which locale the visitor
+ *  was browsing in: that page bypasses every layout, so it cannot read the
+ *  `[lang]` segment off the route params. */
+export const LOCALE_HEADER = "x-waatnia-locale";
+
 export const CURRENCIES = ["USD", "SAR", "SYP"] as const;
 export type Currency = (typeof CURRENCIES)[number];
 

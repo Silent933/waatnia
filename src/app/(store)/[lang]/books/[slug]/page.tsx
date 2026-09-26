@@ -5,11 +5,12 @@ import { notFound } from "next/navigation";
 import { AddToCartButton } from "@/components/cart/AddToCartButton";
 import { BookCard } from "@/components/store/BookCard";
 import { CoverImage } from "@/components/store/CoverImage";
+import { NotFoundScreen } from "@/components/store/NotFoundScreen";
 import { Price } from "@/components/store/Price";
 import { getDictionary } from "@/lib/i18n/dictionaries";
 import { getBookBySlug, getBookSlugs, getRelatedBooks, listCategories } from "@/lib/repo";
 import { getSettings } from "@/lib/settings";
-import { LOCALES, isLocale } from "@/lib/types";
+import { LOCALES, DEFAULT_LOCALE, isLocale } from "@/lib/types";
 
 export async function generateStaticParams() {
   const slugs = await getBookSlugs();
@@ -20,9 +21,10 @@ export async function generateMetadata({
   params,
 }: PageProps<"/[lang]/books/[slug]">): Promise<Metadata> {
   const { lang, slug } = await params;
-  if (!isLocale(lang)) return {};
+  const d = getDictionary(isLocale(lang) ? lang : DEFAULT_LOCALE);
+  if (!isLocale(lang)) return { title: d.notFound.title, robots: { index: false, follow: false } };
   const book = await getBookBySlug(slug);
-  if (!book) return {};
+  if (!book) return { title: d.notFound.title, robots: { index: false, follow: false } };
 
   const description = (lang === "ar" ? book.descAr : book.descEn).slice(0, 200);
 
@@ -52,7 +54,11 @@ export default async function BookDetailPage({ params }: PageProps<"/[lang]/book
   if (!isLocale(lang)) notFound();
 
   const book = await getBookBySlug(slug);
-  if (!book) notFound();
+  // A missing book renders the branded 404 screen in place rather than calling
+  // notFound(): with the root layout under the `[lang]` segment, a thrown
+  // notFound() escapes every not-found boundary and lands on a blank error
+  // document. The status is 200 here, so generateMetadata marks it noindex.
+  if (!book) return <NotFoundScreen lang={lang} />;
 
   const d = getDictionary(lang);
   const [related, categories, settings] = await Promise.all([

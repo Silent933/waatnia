@@ -153,6 +153,17 @@ export const dict = {
       info: "معلومات التواصل",
     },
 
+    notFound: {
+      code: "404",
+      title: "الصفحة غير موجودة",
+      body: "يبدو أن الرابط الذي فتحته تالف، أو أن الصفحة نُقلت إلى مكان آخر. جرّب البحث عن الكتاب في الكتالوج، أو عد إلى الرئيسية.",
+      searchLabel: "ابحث في الكتالوج",
+      home: "العودة إلى الرئيسية",
+      catalog: "تصفّح الكتالوج",
+      quickLinks: "أو تصفّح أحد هذه الأقسام",
+      help: "لم تجد ما تبحث عنه؟",
+    },
+
     about: {
       title: "من نحن",
       body: "متجر متخصص بالروايات والقصص الصوتية، نختار لك مكتبة منتقاة من الأدب العالمي والعربي، ونوصلها إلى بابك في سوريا وخارجها.",
@@ -335,6 +346,17 @@ export const dict = {
       success: "We got your message, thank you.",
       sendAnother: "Send another message",
       info: "Contact details",
+    },
+
+    notFound: {
+      code: "404",
+      title: "Page not found",
+      body: "The link you opened is broken, or the page has moved somewhere else. Try searching the catalog, or head back home.",
+      searchLabel: "Search the catalog",
+      home: "Back to home",
+      catalog: "Browse the catalog",
+      quickLinks: "Or head to one of these",
+      help: "Still looking for something?",
     },
 
     about: {

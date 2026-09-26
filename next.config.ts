@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // `app/global-not-found.tsx` is ignored unless this is on. It is what serves a
+  // URL matching no route, and no amount of `not-found.tsx` can cover those: the
+  // two root layouts plus the `[lang]` segment leave a bare 404 with nowhere to
+  // render, which is the one case a visitor is most likely to hit from a bad link.
+  experimental: {
+    globalNotFound: true,
+  },
   // The store lives entirely under a [lang] segment (/ar, /en) so that every
   // page can set its own lang and dir, and there are two root layouts. That
   // leaves "/" matching no route at all, which is what a visitor typing the
