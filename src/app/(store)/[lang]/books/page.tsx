@@ -44,14 +44,22 @@ export default async function BooksPage({ params, searchParams }: PageProps<"/[l
   const d = getDictionary(lang);
 
   const filter = { q, category, inStockOnly };
-  const total = await countBooks(filter);
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const current = Math.min(page, totalPages);
 
-  const [books, categories] = await Promise.all([
-    listBooks({ ...filter, sort, skip: (current - 1) * PAGE_SIZE, take: PAGE_SIZE }),
+  // The COUNT and the page query share a predicate, so run them together
+  // instead of awaiting the count first — that was two serialised round trips
+  // per page view. `skip` only needs `page`, so the clamp to totalPages can
+  // still happen once the count lands.
+  const [total, books, categories] = await Promise.all([
+    countBooks(filter),
+    listBooks({ ...filter, sort, skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
     listCategories(),
   ]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const current = Math.min(page, totalPages);
+  // page - 1 could overshoot when the requested page was past the end; re-fetch
+  // the clamped page only in that case.
+  const visibleBooks = current === page ? books : await listBooks({ ...filter, sort, skip: (current - 1) * PAGE_SIZE, take: PAGE_SIZE });
 
   const activeCategory = categories.find((c) => c.slug === category);
   const query: Record<string, string> = {};
@@ -132,7 +140,7 @@ export default async function BooksPage({ params, searchParams }: PageProps<"/[l
         )}
       </p>
 
-      {books.length === 0 ? (
+      {visibleBooks.length === 0 ? (
         <div className="card mt-6 p-12 text-center">
           <p className="text-lg font-semibold">{d.books.noResults}</p>
           <p className="mt-1.5 text-sm text-muted">{d.books.noResultsHint}</p>
@@ -142,7 +150,7 @@ export default async function BooksPage({ params, searchParams }: PageProps<"/[l
         </div>
       ) : (
         <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-          {books.map((b, i) => (
+          {visibleBooks.map((b, i) => (
             <BookCard key={b.id} book={b} lang={lang} priority={i < 6} />
           ))}
         </div>

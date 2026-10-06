@@ -103,7 +103,16 @@ export default async function BookDetailPage({ params }: PageProps<"/[lang]/book
 
   return (
     <div className="container-page py-8">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      {/* JSON.stringify does not escape "<", so a "</script>" inside any title
+          or description would close this tag and execute. Escaping "<" as
+          "<" is valid JSON and cannot terminate the element. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
+        }}
+      />
+
 
       <nav aria-label="Breadcrumb" className="mb-6 text-sm text-muted">
         <Link href={`/${lang}`} className="transition hover:text-accent">

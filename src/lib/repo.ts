@@ -85,7 +85,12 @@ export async function listBooks(params: {
     const where: Record<string, unknown> = { active: true };
     if (category) where.category = { slug: category };
     if (inStockOnly) where.stock = { gt: 0 };
-    if (q) where.searchText = { contains: normalizeForSearch(q) };
+    if (q) {
+      // Escape LIKE metacharacters. Prisma parameterises the value so this is
+      // not an injection risk, but an unescaped % or _ would silently widen
+      // the match and defeat the search.
+      where.searchText = { contains: normalizeForSearch(q).replace(/[\\%_]/g, (c) => `\\${c}`) };
+    }
 
     const orderBy =
       sort === "newest"
@@ -119,10 +124,14 @@ export async function listBooks(params: {
 
 export const getBookBySlug = cache(async (slug: string): Promise<BookView | null> => {
   if (prisma) {
-    const row = await prisma.book.findUnique({ where: { slug }, include: bookInclude });
+    // `active: true` matters here as much as in listBooks: archiving a book is
+    // how the owner hides a title, and without this filter the product page
+    // stayed reachable at its URL even though it had left the catalog.
+    const row = await prisma.book.findFirst({ where: { slug, active: true }, include: bookInclude });
     return row ? mapBook(row as never) : null;
   }
-  return jsonBookBySlug.get(slug) ?? null;
+  const book = jsonBookBySlug.get(slug) ?? null;
+  return book?.active ? book : null;
 });
 
 export const getBookById = cache(async (id: number): Promise<BookView | null> => {
@@ -134,18 +143,32 @@ export const getBookById = cache(async (id: number): Promise<BookView | null> =>
 });
 
 export async function getRelatedBooks(book: BookView, limit = 4): Promise<BookView[]> {
-  const list = await listBooks({ category: book.categorySlug ?? undefined });
+  // Bound the read. Without a `take` this pulled an entire category — or the
+  // whole 112-book catalog when the book has no category — on every one of the
+  // product pages at build time.
+  const list = await listBooks({ category: book.categorySlug ?? undefined, take: 40 });
   const others = list.filter((b) => b.id !== book.id);
   const sameCategory = others.filter((b) => b.categorySlug === book.categorySlug);
   const rest = others.filter((b) => b.categorySlug !== book.categorySlug);
   return [...sameCategory, ...rest].slice(0, limit);
 }
 
-/** Slugs for generateStaticParams. */
+/**
+ * Slugs for generateStaticParams.
+ *
+ * Runs on every Vercel build, so a database that is briefly unreachable — a
+ * cold pooler, a Supabase maintenance window, a network blip — would otherwise
+ * fail the whole deploy. Fall back to the bundled catalog instead: the routes
+ * still get prerendered, and a follow-up deploy picks up the live data.
+ */
 export async function getBookSlugs(): Promise<string[]> {
   if (prisma) {
-    const rows = await prisma.book.findMany({ where: { active: true }, select: { slug: true } });
-    return rows.map((r) => r.slug);
+    try {
+      const rows = await prisma.book.findMany({ where: { active: true }, select: { slug: true } });
+      return rows.map((r) => r.slug);
+    } catch (error) {
+      console.error("getBookSlugs: database unreachable, falling back to the bundled catalog.", error);
+    }
   }
   return jsonBooks.filter((b) => b.active).map((b) => b.slug);
 }

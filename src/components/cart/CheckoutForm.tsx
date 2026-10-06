@@ -132,7 +132,8 @@ export function CheckoutForm({ lang, settings }: { lang: Locale; settings: Setti
               <label className="label" htmlFor="note">
                 {d.checkout.note} <span className="font-normal text-muted">({d.checkout.noteHint})</span>
               </label>
-              <textarea id="note" name="note" rows={2} className="field" />
+              <textarea id="note" name="note" rows={2} className="field" maxLength={1000} />
+              {err("note") && <p className="mt-1 text-xs text-danger">{d.common.required}</p>}
             </div>
           </div>
         </fieldset>
@@ -241,7 +242,11 @@ export function CheckoutForm({ lang, settings }: { lang: Locale; settings: Setti
                 ? lang === "ar"
                   ? "السلة فارغة."
                   : "Your cart is empty."
-                : d.common.error}
+                : state.message === "rate_limited"
+                  ? lang === "ar"
+                    ? `طلبات كثيرة خلال وقت قصير. حاول بعد ${Math.max(1, Math.ceil((state.retryAfter ?? 60_000) / 60_000))} دقيقة.`
+                    : `Too many attempts. Please try again in ${Math.max(1, Math.ceil((state.retryAfter ?? 60_000) / 60_000))} minute(s).`
+                  : d.common.error}
           </p>
         )}
 

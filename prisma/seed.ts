@@ -1,11 +1,19 @@
 /**
  * Seeds the database from the extracted catalog.
  *
- *   npm run db:seed
+ *   npm run db:seed            # create anything missing, change nothing else
+ *   npm run db:seed -- --force # also overwrite existing books/categories
  *
- * Idempotent: categories are upserted by slug, books by sourceId, settings by
- * id = 1. The admin user is only created when it does not already exist, so
- * re-running never resets a password you have changed.
+ * Idempotent and non-destructive by default: the Vercel build runs this on
+ * every deploy, so anything already in the database is treated as owner-owned
+ * and left alone. That is why an existing book row is skipped rather than
+ * updated — re-applying the source data would revert every edit made from
+ * /admin. Use --force only when you deliberately want to re-sync from the PDFs.
+ *
+ * Settings are upserted with an empty `update`, so the single row is created
+ * once and thereafter tuned entirely from /admin/settings. The admin user is
+ * only created when it does not already exist, so re-running never resets a
+ * password you have changed.
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -40,17 +48,27 @@ async function main() {
   const titles = arTitles as ArTitles;
   const entries = catalog as RawEntry[];
   const defaultPriceCents = siteJson.defaultPriceCents;
+  const force = process.argv.includes("--force");
 
   console.log(`Seeding ${entries.length} books and ${titles.categories.length} categories…`);
 
   // --- categories -------------------------------------------------------
+  // Existing categories are owner-editable too, so only insert what is
+  // missing unless --force was passed.
   const categoryIdBySlug = new Map<string, number>();
   for (const [index, c] of titles.categories.entries()) {
-    const row = await prisma.category.upsert({
-      where: { slug: c.slug },
-      update: { nameAr: c.ar, nameEn: c.en, sort: index },
-      create: { slug: c.slug, nameAr: c.ar, nameEn: c.en, sort: index },
-    });
+    const existing = await prisma.category.findUnique({ where: { slug: c.slug } });
+    const row = existing
+      ? existing
+      : await prisma.category.create({
+          data: { slug: c.slug, nameAr: c.ar, nameEn: c.en, sort: index },
+        });
+    if (existing && force) {
+      await prisma.category.update({
+        where: { id: existing.id },
+        data: { nameAr: c.ar, nameEn: c.en, sort: index },
+      });
+    }
     categoryIdBySlug.set(c.slug, row.id);
   }
 
@@ -88,16 +106,21 @@ async function main() {
 
     const existing = await prisma.book.findUnique({ where: { sourceId: entry.id } });
     if (existing) {
-      // Keep any price/stock edits the owner has made in the dashboard.
-      await prisma.book.update({
-        where: { id: existing.id },
-        data: {
-          ...data,
-          priceCents: existing.priceCents,
-          stock: existing.stock,
-          active: existing.active,
-        },
-      });
+      // Leave the row alone. Every field below is owner-editable from the
+      // dashboard, so re-applying it on each build would silently revert
+      // translated descriptions, cover changes, CD badges and category
+      // assignments. Pass --force to deliberately re-sync from the PDFs.
+      if (force) {
+        await prisma.book.update({
+          where: { id: existing.id },
+          data: {
+            ...data,
+            priceCents: existing.priceCents,
+            stock: existing.stock,
+            active: existing.active,
+          },
+        });
+      }
       updated++;
     } else {
       await prisma.book.create({ data });
@@ -105,7 +128,10 @@ async function main() {
     }
   }
 
-  console.log(`  books: ${created} created, ${updated} updated`);
+  console.log(
+    `  books: ${created} created, ${updated} already present` +
+      (updated > 0 && !force ? " (left untouched — pass --force to overwrite)" : ""),
+  );
 
   // --- settings ---------------------------------------------------------
   await prisma.siteSetting.upsert({
@@ -134,8 +160,23 @@ async function main() {
   const email = ADMIN_EMAIL;
   const password = process.env.ADMIN_PASSWORD ?? "";
 
+  // The .env.example placeholders are long enough to clear the length check,
+  // so they must be rejected by name or the owner account ships with a
+  // publicly known password.
+  const PLACEHOLDER_PASSWORDS = new Set([
+    "change-me-before-deploy",
+    "change-me",
+    "password",
+    "admin",
+  ]);
+
   if (!password) {
     console.warn("  ! ADMIN_PASSWORD not set — skipping admin user creation");
+  } else if (PLACEHOLDER_PASSWORDS.has(password.trim().toLowerCase())) {
+    console.warn(
+      "  ! ADMIN_PASSWORD is still the .env.example placeholder — admin user NOT created.\n" +
+        "    Set a strong unique password in Vercel and redeploy.",
+    );
   } else if (password.length < 12) {
     console.warn(
       "  ! ADMIN_PASSWORD is shorter than 12 characters — admin user NOT created.\n" +

@@ -44,7 +44,9 @@ model Book {
   updatedAt   DateTime @updatedAt
 
   // denormalised haystack: titleAr + titleEn + descAr + descEn, lowercased.
-  // Kept in sync on every write so bilingual search stays a single indexed lookup.
+  // Kept in sync on every write so bilingual search stays a single lookup.
+  // Matching is a leading-wildcard LIKE, which a B-tree cannot serve — the
+  // trigram index below is what actually makes search fast (see prisma/trgm.sql).
   searchText  String   @db.Text
 
   orderItems  OrderItem[]
@@ -132,6 +134,11 @@ model AdminUser {
   email        String   @unique
   passwordHash String
   name         String   @default("Admin")
+  /// Bumped on every password change. Session cookies carry the value they were
+  /// issued with, so a mismatch logs every existing session out — otherwise a
+  /// stolen cookie stays valid for its full 7 days after the owner rotates the
+  /// password in response to the theft.
+  tokenVersion Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -153,7 +160,7 @@ model SiteSetting {
   // --- shipping ---
   shippingFlatCents Int     @default(5000) // charged outside the free zones
   freeCountries     Json    @default("[\"SY\",\"SA\"]") // ISO-3166 alpha-2
-  freeCities        Json    @default("[\"الرياض\",\"Riyadh\"]")
+  freeCities        Json    @default("[\"SA:الرياض\",\"SA:Riyadh\"]") // "COUNTRY:City"
 
   // --- store identity ---
   storeNameAr String @default("قصصنا")

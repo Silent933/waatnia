@@ -6,7 +6,7 @@
   "currencyDefault": "USD",
   "shippingFlatCents": 5000,
   "freeCountries": ["SY", "SA"],
-  "freeCities": ["الرياض", "Riyadh"],
+  "freeCities": ["SA:الرياض", "SA:Riyadh"],
   "storeNameAr": "قصصنا",
   "storeNameEn": "Waatnia Stories",
   "taglineAr": "متجر قصص ومسلسلات صوتية",

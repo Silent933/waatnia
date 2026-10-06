@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+const isProduction = process.env.NODE_ENV === "production";
+
 const nextConfig: NextConfig = {
   // `app/global-not-found.tsx` is ignored unless this is on. It is what serves a
   // URL matching no route, and no amount of `not-found.tsx` can cover those: the
@@ -39,6 +41,38 @@ const nextConfig: NextConfig = {
             key: "X-DNS-Prefetch-Control",
             value: "off",
           },
+          // This app needs no camera, microphone, geolocation or payment access.
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+          },
+          // Production only. `next dev` needs 'unsafe-eval' for React Fast
+          // Refresh and a websocket for HMR, and a CSP strict enough to be
+          // worth having would break both.
+          ...(isProduction
+            ? [
+                {
+                  key: "Content-Security-Policy",
+                  value: [
+                    "default-src 'self'",
+                    // Next injects inline bootstrap/hydration scripts, and the
+                    // Product JSON-LD block is inline, so 'unsafe-inline' is
+                    // unavoidable here. This still blocks remote script and
+                    // object injection.
+                    "script-src 'self' 'unsafe-inline'",
+                    "style-src 'self' 'unsafe-inline'",
+                    "img-src 'self' data: blob: https://*.supabase.co",
+                    "font-src 'self' data:",
+                    "connect-src 'self'",
+                    "frame-ancestors 'none'",
+                    "base-uri 'self'",
+                    "form-action 'self'",
+                    "object-src 'none'",
+                    "upgrade-insecure-requests",
+                  ].join("; "),
+                },
+              ]
+            : []),
         ],
       },
     ];

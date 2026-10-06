@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { deleteOrder, updateOrderStatus } from "@/app/actions/admin-orders";
 import { requireAdmin } from "@/lib/auth";
 import { money } from "@/components/admin/money";
+import { formatDateTime } from "@/lib/format";
 import { requirePrisma } from "@/lib/prisma";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/types";
 
@@ -17,11 +18,7 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
 };
 
 function formatDate(value: Date): string {
-  return new Intl.DateTimeFormat("ar-SY", {
-    dateStyle: "long",
-    timeStyle: "short",
-    numberingSystem: "latn",
-  }).format(value);
+  return formatDateTime(value);
 }
 
 export default async function AdminOrderDetailPage({ params, searchParams }: PageProps<"/admin/orders/[id]">) {
@@ -67,6 +64,16 @@ export default async function AdminOrderDetailPage({ params, searchParams }: Pag
       {notice === "stock" && (
         <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
           تعذّر إلغاء الإلغاء: لا يوجد مخزون كافٍ لإعادة حجز الكميات. زد المخزون من صفحة الكتب أو أبقِ الطلب ملغياً.
+        </p>
+      )}
+      {notice === "conflict" && (
+        <p role="alert" className="rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
+          الطلب تغيّر من نافذة أخرى أثناء الحفظ، فلم يُطبَّق التعديل. راجع الحالة الحالية وأعد المحاولة.
+        </p>
+      )}
+      {notice === "not_found" && (
+        <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+          الطلب غير موجود.
         </p>
       )}
 

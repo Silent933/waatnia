@@ -22,6 +22,13 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
     listCategories(),
   ]);
 
+  const heroCovers = [
+    { tilt: "lg:-rotate-3 lg:translate-y-4", duration: "7.5s", delay: "0s" },
+    { tilt: "lg:rotate-2 lg:-translate-y-4", duration: "8.5s", delay: "-2.4s" },
+    { tilt: "lg:rotate-3 lg:translate-y-8", duration: "9.5s", delay: "-4.2s" },
+    { tilt: "lg:-rotate-2 lg:translate-y-2", duration: "8s", delay: "-1.2s" },
+  ];
+
   const perks = [
     {
       title: lang === "ar" ? "توصيل لكل سوريا" : "Delivery across Syria",
@@ -82,24 +89,31 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
             </dl>
           </div>
 
-          <div className="relative mx-auto hidden w-56 lg:block">
-            <div className="grid grid-cols-2 gap-3">
+          <div className="relative mx-auto w-full max-w-xs sm:max-w-sm lg:w-[26rem] lg:max-w-none">
+            <div className="pointer-events-none absolute -inset-12 rounded-full bg-accent-soft/50 blur-3xl" />
+            <div className="relative grid grid-cols-2 gap-4 sm:gap-5">
               {featured.slice(0, 4).map((b, i) => (
-                <Link
-                  key={b.id}
-                  href={`${h}/books/${b.slug}`}
-                  className={`card overflow-hidden ${i % 2 ? "translate-y-6" : ""}`}
-                >
-                  <div className="relative aspect-square bg-sunken">
-                    <Image
-                      src={b.cover}
-                      alt={b.titleEn}
-                      fill
-                      sizes="112px"
-                      className="object-cover"
-                    />
-                  </div>
-                </Link>
+                <div key={b.id} className={heroCovers[i].tilt}>
+                  <Link
+                    href={`${h}/books/${b.slug}`}
+                    className="group card block overflow-hidden shadow-lift animate-float"
+                    style={{
+                      animationDuration: heroCovers[i].duration,
+                      animationDelay: heroCovers[i].delay,
+                    }}
+                  >
+                    <div className="relative aspect-square bg-sunken">
+                      <Image
+                        src={b.cover}
+                        alt={b.titleEn}
+                        fill
+                        priority={i < 4}
+                        sizes="(min-width:1024px) 200px, (min-width:640px) 34vw, 42vw"
+                        className="object-cover transition duration-500 group-hover:scale-105"
+                      />
+                    </div>
+                  </Link>
+                </div>
               ))}
             </div>
           </div>

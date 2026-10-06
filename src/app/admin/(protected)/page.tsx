@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { requireAdmin } from "@/lib/auth";
 import { listActivity } from "@/lib/activity";
+import { formatDateTime } from "@/lib/format";
 import { requirePrisma } from "@/lib/prisma";
 import { money } from "@/components/admin/money";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/types";
@@ -136,7 +137,8 @@ export default async function AdminDashboard() {
                     <p className="truncate text-sm">{a.summary}</p>
                     <p className="text-[11px] text-muted">
                       {a.action} ·{" "}
-                      {new Intl.DateTimeFormat("ar-SY", { dateStyle: "short", timeStyle: "short", numberingSystem: "latn" }).format(a.createdAt)}
+                      {formatDateTime(a.createdAt, "short")}
+
                     </p>
                   </li>
                 ))}

@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 
 import { logActivity } from "@/lib/activity";
 import { countryName, isKnownCountry } from "@/lib/countries";
+import { SHOP_TIME_ZONE } from "@/lib/format";
 import { requirePrisma } from "@/lib/prisma";
 import { clientIp, enforceRateLimit } from "@/lib/rate-limit";
 import { revalidateHome, revalidateStore } from "@/lib/revalidate";
@@ -16,25 +17,47 @@ export type OrderFormState = {
   message?: string;
   orderNumber?: string;
   fieldErrors?: Record<string, string>;
+  /** Milliseconds the caller must wait, for throttled submissions. */
+  retryAfter?: number;
 };
 
 const MAX_QTY = 20;
+/** Distinct titles one order may contain. Bounds the size of the transaction. */
+const MAX_LINES = 50;
 
 function field(v: FormDataEntryValue | null): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
 function makeOrderNumber(now = new Date()): string {
-  const yy = String(now.getFullYear()).slice(2);
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
+  // Read the date in the shop's timezone, not the server's. On Vercel the
+  // server is UTC, so an order placed at 01:00 in Damascus was numbered with
+  // the previous day's date and disagreed with the date on the receipt.
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: SHOP_TIME_ZONE,
+    year: "2-digit",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  const yy = get("year");
+  const mm = get("month");
+  const dd = get("day");
   // The random part is the only secret guarding the guest tracker, which
   // exposes the customer's name and city. 5 bytes = 40 bits, so a day of
   // orders cannot be enumerated; the date prefix stays readable.
   return `WNT-${yy}${mm}${dd}-${randomBytes(5).toString("hex").toUpperCase()}`;
 }
 
-/** Guest-visible order tracker: returns only non-sensitive fields. */
+/**
+ * Guest-visible order tracker.
+ *
+ * The order number's random half is the only thing standing between a stranger
+ * and someone else's name, city and basket, so this is throttled as well as
+ * hard to guess. It returns only the fields a customer needs to see their own
+ * order — no address, phone or note.
+ */
 export async function getOrderForGuest(
   number: string,
 ): Promise<
@@ -53,8 +76,15 @@ export async function getOrderForGuest(
   | null
 > {
   const prisma = requirePrisma();
+  const lookup = field(number).toUpperCase();
+  if (!/^WNT-\d{6}-[0-9A-F]{10}$/.test(lookup)) return null;
+
+  // Throttle the tracker itself: without it, a leaked or guessed order-number
+  // pattern could be walked to pull names and cities.
+  if ((await enforceRateLimit("order-lookup", await clientIp(), 20, 10 * 60_000)) !== null) return null;
+
   const order = await prisma.order.findUnique({
-    where: { number: field(number).toUpperCase() },
+    where: { number: lookup },
     include: { items: true },
   });
   if (!order) return null;
@@ -92,6 +122,13 @@ export async function placeOrder(
 ): Promise<OrderFormState> {
   const prisma = requirePrisma();
 
+  // Honeypot: a real customer never sees this input, so anything in it means a
+  // bot filled the form in. Silently accept so the bot learns nothing, but do
+  // not create the order.
+  if (field(formData.get("website"))) {
+    return { status: "success", orderNumber: "WNT-000000-000000" };
+  }
+
   const locale = (field(formData.get("locale")) || "ar") as Locale;
   const customerName = field(formData.get("name"));
   const phone = field(formData.get("phone"));
@@ -103,11 +140,12 @@ export async function placeOrder(
   const rawItems = field(formData.get("items"));
 
   const fieldErrors: Record<string, string> = {};
-  if (customerName.length < 2) fieldErrors.name = "required";
-  if (phone.replace(/\D/g, "").length < 6) fieldErrors.phone = "required";
+  if (customerName.length < 2 || customerName.length > 120) fieldErrors.name = "required";
+  if (phone.replace(/\D/g, "").length < 6 || phone.length > 40) fieldErrors.phone = "required";
   if (!isKnownCountry(country)) fieldErrors.country = "required";
-  if (city.length < 2) fieldErrors.city = "required";
-  if (address.length < 5) fieldErrors.address = "required";
+  if (city.length < 2 || city.length > 120) fieldErrors.city = "required";
+  if (address.length < 5 || address.length > 500) fieldErrors.address = "required";
+  if (note !== null && note.length > 1000) fieldErrors.note = "required";
   if (!(PAYMENT_METHODS as readonly string[]).includes(paymentMethod)) fieldErrors.paymentMethod = "required";
   if (Object.keys(fieldErrors).length > 0) return { status: "error", fieldErrors };
 
@@ -115,10 +153,19 @@ export async function placeOrder(
   try {
     const parsed = JSON.parse(rawItems);
     if (!Array.isArray(parsed)) throw new Error("bad shape");
-    requested = parsed
-      .map((x) => ({ bookId: Number(x?.bookId), qty: Number(x?.qty) }))
-      .filter((x) => Number.isInteger(x.bookId) && Number.isInteger(x.qty) && x.qty > 0)
-      .map((x) => ({ ...x, qty: Math.min(x.qty, MAX_QTY) }));
+    // Collapse duplicate lines before the cap. Without this, a payload of
+    // [{bookId:1,qty:20},{bookId:1,qty:20}] became two order lines of 20 and
+    // two separate stock decrements — 40 units against a 20-unit per-title cap.
+    const totals = new Map<number, number>();
+    for (const entry of parsed) {
+      const bookId = Number(entry?.bookId);
+      const qty = Number(entry?.qty);
+      if (!Number.isInteger(bookId) || !Number.isInteger(qty) || qty <= 0) continue;
+      totals.set(bookId, (totals.get(bookId) ?? 0) + qty);
+    }
+    requested = [...totals.entries()]
+      .slice(0, MAX_LINES)
+      .map(([bookId, qty]) => ({ bookId, qty: Math.min(qty, MAX_QTY) }));
   } catch {
     requested = [];
   }
@@ -129,7 +176,9 @@ export async function placeOrder(
   // with a loop of otherwise-valid orders.
   const waitFor = await enforceRateLimit("order", await clientIp(), 5, 10 * 60_000);
   if (waitFor !== null) {
-    return { status: "error", message: `طلبات كثيرة خلال وقت قصير. حاول بعد ${Math.max(1, Math.ceil(waitFor / 60))} دقيقة.` };
+    // A machine-readable code the form can translate, not an Arabic string the
+    // English UI would show verbatim.
+    return { status: "error", message: "rate_limited", retryAfter: waitFor };
   }
 
   const settings = await getSettings();

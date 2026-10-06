@@ -1,11 +1,25 @@
 import { PrismaClient } from "@prisma/client";
 
+/**
+ * Placeholders that ship in .env.example. Left in place, the URL *looks*
+ * configured — so the admin renders its login form and then every query fails
+ * with a Postgres authentication error, instead of showing the "database not
+ * connected" panel that would actually explain the problem.
+ */
+const PLACEHOLDER_FRAGMENTS = [
+  "[PROJECT-REF]",
+  "[PASSWORD]",
+  "[REGION]",
+  "USER:PASSWORD",
+  "HOST/DATABASE",
+];
+
 /** True only when a real DATABASE_URL is configured (rejects the .env.example placeholder). */
 export function hasDatabase(): boolean {
   const url = process.env.DATABASE_URL?.trim();
   if (!url) return false;
-  if (url.includes("USER:PASSWORD") || url.includes("HOST/DATABASE")) return false;
-  return true;
+  if (PLACEHOLDER_FRAGMENTS.some((fragment) => url.includes(fragment))) return false;
+  return /^postgres(ql)?:\/\/.+/.test(url);
 }
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
@@ -22,7 +36,8 @@ if (process.env.NODE_ENV !== "production" && prisma) {
 export function requirePrisma(): PrismaClient {
   if (!prisma) {
     throw new Error(
-      "DATABASE_URL is not configured. Copy .env.example to .env and set a PostgreSQL connection string, then run: npx prisma migrate deploy && npm run db:seed",
+      "DATABASE_URL is not configured (or is still the .env.example placeholder). " +
+        "Set a PostgreSQL connection string, then run: npm run db:push && npm run db:seed",
     );
   }
   return prisma;

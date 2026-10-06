@@ -1,12 +1,9 @@
 import { listActivity } from "@/lib/activity";
 import { requireAdmin } from "@/lib/auth";
+import { formatDateTime } from "@/lib/format";
 
 function formatDate(value: Date): string {
-  return new Intl.DateTimeFormat("ar-SY", {
-    dateStyle: "medium",
-    timeStyle: "medium",
-    numberingSystem: "latn",
-  }).format(value);
+  return formatDateTime(value);
 }
 
 export default async function AdminActivityPage() {

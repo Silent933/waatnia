@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 
 import { getDictionary } from "@/lib/i18n/dictionaries";
 import { DEFAULT_LOCALE, isLocale, LOCALES } from "@/lib/types";
@@ -29,18 +28,24 @@ export async function generateMetadata({
   if (!isLocale(lang) || !isPolicySlug(slug)) {
     return { title: d.notFound.title, robots: { index: false, follow: false } };
   }
-  return { title: d.policies[slug] };
+  // The body is a placeholder until the policies are editable from /admin, so
+  // these pages are kept out of the index: four near-identical stub pages are
+  // thin content, and they are the kind of thing that drags a domain's
+  // quality down. Flip this to index once real text is in place.
+  return { title: d.policies[slug], robots: { index: false, follow: true } };
 }
 
 export default async function PolicyPage({ params }: PageProps<"/[lang]/policies/[slug]">) {
   const { lang, slug } = await params;
-  if (!isLocale(lang) || !isPolicySlug(slug)) notFound();
-
-  const d = getDictionary(lang);
+  // `dynamicParams = false` plus the fixed SLUGS list means the router only ever
+  // renders valid pairs, so no re-check is needed — and calling notFound()
+  // here would escape every boundary and serve a blank document.
+  const d = getDictionary(isLocale(lang) ? lang : DEFAULT_LOCALE);
+  const policySlug = isPolicySlug(slug) ? slug : "terms";
 
   return (
     <div className="container-page max-w-2xl py-12">
-      <h1 className="text-3xl sm:text-4xl">{d.policies[slug]}</h1>
+      <h1 className="text-3xl sm:text-4xl">{d.policies[policySlug]}</h1>
       <div className="card mt-6 p-6">
         <p className="text-ink-soft">{d.policies.body}</p>
       </div>

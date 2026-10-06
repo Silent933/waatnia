@@ -1,13 +1,10 @@
 import { deleteMessage, toggleMessageRead } from "@/app/actions/admin-settings";
 import { requireAdmin } from "@/lib/auth";
+import { formatDateTime } from "@/lib/format";
 import { requirePrisma } from "@/lib/prisma";
 
 function formatDate(value: Date): string {
-  return new Intl.DateTimeFormat("ar-SY", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    numberingSystem: "latn",
-  }).format(value);
+  return formatDateTime(value);
 }
 
 export default async function AdminMessagesPage() {

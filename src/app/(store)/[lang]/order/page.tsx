@@ -8,7 +8,12 @@ import { isLocale } from "@/lib/types";
 export async function generateMetadata({ params }: PageProps<"/[lang]/order">): Promise<Metadata> {
   const { lang } = await params;
   if (!isLocale(lang)) return {};
-  return { title: getDictionary(lang).checkout.track };
+  return {
+    title: getDictionary(lang).checkout.track,
+    // A utility form with no content of its own — keep it out of the index but
+    // let crawlers follow the link, since customers reach it from the footer.
+    robots: { index: false, follow: true },
+  };
 }
 
 export default async function TrackOrderPage({ params }: PageProps<"/[lang]/order">) {

@@ -28,7 +28,7 @@ export default async function AdminLoginPage() {
               <code className="latin rounded bg-sunken px-1">.env</code>، ثم شغّل:
             </p>
             <pre className="latin mt-3 overflow-x-auto rounded-lg bg-sunken p-3 text-xs">
-{`npx prisma migrate deploy
+{`npm run db:push
 npm run db:seed`}
             </pre>
           </div>

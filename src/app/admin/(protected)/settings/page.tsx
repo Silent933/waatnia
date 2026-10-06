@@ -14,11 +14,15 @@ export default async function AdminSettingsPage({ searchParams }: PageProps<"/ad
   const get = (k: string) => (Array.isArray(sp[k]) ? sp[k][0] : sp[k]) as string | undefined;
 
   const errors: Record<string, string> = {
-    rates: "أسعار الصرف يجب أن تكون أرقاماً موجبة.",
+    rates: "أسعار الصرف يجب أن تكون أرقاماً موجبة (0.01 على الأقل).",
     price: "السعر الافتراضي غير صالح.",
     shipping: "رسوم الشحن غير صالحة.",
     currency: "العملة الافتراضية غير صالحة.",
-    password: "كلمة المرور الجديدة غير صالحة (8 أحرف على الأقل ومطابقة للتأكيد).",
+    countries: "أحد رموز الدول غير معروف. استخدم رمز ISO من حقل Pays (مثال: SY).",
+    cities: "أحد المدن لا يطابق الصيغة الدولة:المدينة، أو رمز الدولة غير معروف.",
+    siteUrl: "رابط الموقع غير صالح. اكتبه كاملاً، مثل https://waatnia.sy",
+    weak: "كلمة المرور الجديدة قصيرة — 12 حرفاً على الأقل.",
+    mismatch: "كلمة المرور الجديدة وتأكيدها غير متطابقين.",
     current: "كلمة المرور الحالية غير صحيحة.",
   };
 
@@ -101,8 +105,10 @@ export default async function AdminSettingsPage({ searchParams }: PageProps<"/ad
             </div>
             <div>
               <label className="label" htmlFor="freeCities">مدن الشحن المجاني</label>
-              <input id="freeCities" name="freeCities" defaultValue={s.freeCities.join(", ")} className="field" placeholder="الرياض, Riyadh" />
-              <p className="mt-1 text-[11px] text-muted">تُطابق بعد تجاهل حالة الأحرف والمسافات.</p>
+              <input id="freeCities" name="freeCities" defaultValue={s.freeCities.join(", ")} className="field" dir="ltr" placeholder="SA:الرياض, SA:Riyadh" />
+              <p className="mt-1 text-[11px] text-muted">
+                صيغة <span className="latin">الدولة:المدينة</span> — البادئة مطلوبة، وإلا تتم المطابقة في كل الدول.
+              </p>
             </div>
           </div>
         </section>
@@ -199,14 +205,18 @@ export default async function AdminSettingsPage({ searchParams }: PageProps<"/ad
       <section className="card space-y-4 p-5">
         <h2 className="font-bold">تغيير كلمة المرور</h2>
         <p className="text-xs text-muted" dir="ltr">{admin.email}</p>
+        <p className="text-xs text-muted">
+          بعد التغيير تُنهى كل الجلسات المفتوحة — بما فيها الجلسات على الأجهزة الأخرى — ويجب تسجيل الدخول من جديد.
+        </p>
         <form action={changeAdminPassword} className="grid gap-4 sm:grid-cols-3">
           <div>
             <label className="label" htmlFor="current">كلمة المرور الحالية</label>
             <input id="current" name="current" type="password" className="field latin" dir="ltr" required autoComplete="current-password" />
           </div>
           <div>
-            <label className="label" htmlFor="next">الجديدة (8 أحرف على الأقل)</label>
-            <input id="next" name="next" type="password" className="field latin" dir="ltr" required autoComplete="new-password" />
+            {/* 12, not 8 — the server has always required 12. */}
+            <label className="label" htmlFor="next">الجديدة (12 حرفاً على الأقل)</label>
+            <input id="next" name="next" type="password" className="field latin" dir="ltr" required minLength={12} autoComplete="new-password" />
           </div>
           <div>
             <label className="label" htmlFor="confirm">تأكيد الجديدة</label>

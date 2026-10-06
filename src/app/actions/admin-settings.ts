@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { logActivity } from "@/lib/activity";
 import { requireAdmin } from "@/lib/auth";
+import { isKnownCountry } from "@/lib/countries";
 import { requirePrisma } from "@/lib/prisma";
 import { revalidateStore } from "@/lib/revalidate";
 import { updateSettings } from "@/lib/settings";
@@ -36,11 +37,41 @@ export async function saveSettings(formData: FormData): Promise<void> {
   const defaultPriceSar = Number(str(formData, "defaultPriceSar"));
   const shippingFlatSar = Number(str(formData, "shippingFlatSar"));
 
-  if (!Number.isFinite(usdPerSar) || usdPerSar <= 0) redirect("/admin/settings?error=rates");
-  if (!Number.isFinite(sypPerSar) || sypPerSar <= 0) redirect("/admin/settings?error=rates");
+  // A rate this small makes every price render as 0.00 while still passing a
+  // plain "> 0" check, which silently turns the whole shop free.
+  if (!Number.isFinite(usdPerSar) || usdPerSar < 0.01) redirect("/admin/settings?error=rates");
+  if (!Number.isFinite(sypPerSar) || sypPerSar < 0.01) redirect("/admin/settings?error=rates");
   if (!Number.isFinite(defaultPriceSar) || defaultPriceSar < 0) redirect("/admin/settings?error=price");
   if (!Number.isFinite(shippingFlatSar) || shippingFlatSar < 0) redirect("/admin/settings?error=shipping");
   if (!(CURRENCIES as readonly string[]).includes(currency)) redirect("/admin/settings?error=currency");
+
+  // Reject unknown country codes: a typo like "SYR" looks saved but quietly
+  // disables free shipping for the country it was meant to cover.
+  const freeCountries = list(str(formData, "freeCountries")).map((c) => c.toUpperCase());
+  if (freeCountries.some((c) => !isKnownCountry(c))) redirect("/admin/settings?error=countries");
+
+  // Free-shipping cities are scoped as "COUNTRY:City". An entry without the
+  // prefix would match in every country, so require the country to be known.
+  const freeCities = list(str(formData, "freeCities"));
+  const badCity = freeCities.some((entry) => {
+    const separator = entry.indexOf(":");
+    if (separator === -1) return false;
+    return !isKnownCountry(entry.slice(0, separator).trim().toUpperCase());
+  });
+  if (badCity) redirect("/admin/settings?error=cities");
+
+  // The site URL feeds canonical tags, hreflang, OpenGraph and the sitemap.
+  // A typo would quietly point every canonical at a domain the owner does not
+  // control, so require a real absolute http(s) URL or leave it empty.
+  const siteUrl = nullable(str(formData, "siteUrl"));
+  if (siteUrl) {
+    try {
+      const parsed = new URL(siteUrl);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("bad protocol");
+    } catch {
+      redirect("/admin/settings?error=siteUrl");
+    }
+  }
 
   await updateSettings({
     usdPerSar,
@@ -48,8 +79,8 @@ export async function saveSettings(formData: FormData): Promise<void> {
     defaultPriceCents: Math.round(defaultPriceSar * 100),
     currencyDefault: currency,
     shippingFlatCents: Math.round(shippingFlatSar * 100),
-    freeCountries: list(str(formData, "freeCountries")).map((c) => c.toUpperCase()),
-    freeCities: list(str(formData, "freeCities")),
+    freeCountries,
+    freeCities,
     storeNameAr: str(formData, "storeNameAr") || "قصصنا",
     storeNameEn: str(formData, "storeNameEn") || "Waatnia Stories",
     taglineAr: str(formData, "taglineAr"),
@@ -65,7 +96,7 @@ export async function saveSettings(formData: FormData): Promise<void> {
     instagramUrl: nullable(str(formData, "instagramUrl")),
     facebookUrl: nullable(str(formData, "facebookUrl")),
     telegramUrl: nullable(str(formData, "telegramUrl")),
-    siteUrl: nullable(str(formData, "siteUrl")),
+    siteUrl,
     seoTitleAr: nullable(str(formData, "seoTitleAr")),
     seoTitleEn: nullable(str(formData, "seoTitleEn")),
     seoDescAr: nullable(str(formData, "seoDescAr")),
@@ -128,17 +159,26 @@ export async function changeAdminPassword(formData: FormData): Promise<void> {
   const schema = z
     .object({ next: z.string().min(12, "weak"), confirm: z.string() })
     .refine((v) => v.next === v.confirm, { message: "mismatch" });
-  if (!schema.safeParse({ next, confirm }).success) redirect("/admin/settings?error=password");
+  const parsed = schema.safeParse({ next, confirm });
+  if (!parsed.success) {
+    // Distinguish "too weak" from "the two do not match" — a single error left
+    // the owner guessing which rule they broke.
+    const reason = parsed.error.issues[0]?.message === "mismatch" ? "mismatch" : "weak";
+    redirect(`/admin/settings?error=${reason}`);
+  }
 
   const record = await prisma.adminUser.findUnique({ where: { id: admin.id } });
-  if (!record) redirect("/admin/settings?error=password");
+  if (!record) redirect("/admin/settings?error=current");
 
   const bcrypt = (await import("bcryptjs")).default;
   if (!(await bcrypt.compare(current, record.passwordHash))) redirect("/admin/settings?error=current");
 
   await prisma.adminUser.update({
     where: { id: admin.id },
-    data: { passwordHash: await bcrypt.hash(next, 12) },
+    // tokenVersion bump retires every session cookie issued under the old
+    // password, so changing it after a suspected compromise actually ends the
+    // attacker's access instead of leaving it live for up to 7 days.
+    data: { passwordHash: await bcrypt.hash(next, 12), tokenVersion: { increment: 1 } },
   });
   await logActivity({ actor: admin.email, action: "auth.password", entity: "admin", entityId: String(admin.id), summary: "تم تغيير كلمة المرور" });
 

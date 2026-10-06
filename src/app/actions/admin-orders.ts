@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { logActivity } from "@/lib/activity";
 import { requireAdmin } from "@/lib/auth";
 import { requirePrisma } from "@/lib/prisma";
+import { revalidateHome, revalidateStore } from "@/lib/revalidate";
 import { isOrderStatus } from "@/lib/types";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -24,18 +25,23 @@ export async function updateOrderStatus(formData: FormData): Promise<void> {
   const status = String(formData.get("status") ?? "");
   if (!id || !isOrderStatus(status)) return;
 
-  const order = await prisma.order.findUnique({ where: { id } });
-  if (!order) return;
+  // Re-read the order inside the transaction and commit the status change
+  // with a compare-and-swap on the status we branched on. Reading the status
+  // outside (as this used to) let two concurrent cancels both see "new", both
+  // return the copies to stock, and then both write "cancelled" — inflating
+  // inventory permanently. updateMany acts as the guard: the loser's WHERE
+  // no longer matches, it throws, and the whole transaction rolls back.
+  let previousStatus = "";
+  try {
+    await prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({ where: { id } });
+      if (!order) throw new Error(`NOT_FOUND:${id}`);
 
-  // Cancelling gives the reserved copies back; un-cancelling takes them out
-  // again. Both directions are conditional so a status change that does not
-  // actually move the order cannot double-count the stock.
-  const wasCancelled = order.status === "cancelled";
-  const isCancelled = status === "cancelled";
+      previousStatus = order.status;
+      const wasCancelled = order.status === "cancelled";
+      const isCancelled = status === "cancelled";
 
-  if (wasCancelled !== isCancelled) {
-    try {
-      await prisma.$transaction(async (tx) => {
+      if (wasCancelled !== isCancelled) {
         const items = await tx.orderItem.findMany({ where: { orderId: id } });
         for (const item of items) {
           if (!item.bookId) continue;
@@ -52,30 +58,44 @@ export async function updateOrderStatus(formData: FormData): Promise<void> {
             if (updated.count !== 1) throw new Error(`OUT_OF_STOCK:${item.bookId}`);
           }
         }
-        await tx.order.update({ where: { id }, data: { status } });
-      });
-    } catch (error) {
-      const code = error instanceof Error ? error.message : "";
-      if (code.startsWith("OUT_OF_STOCK")) {
-        revalidatePath(`/admin/orders/${id}`);
-        redirect(`/admin/orders/${id}?error=stock`);
       }
-      throw error;
+
+      const swapped = await tx.order.updateMany({
+        where: { id, status: order.status },
+        data: { status },
+      });
+      if (swapped.count !== 1) throw new Error(`CONFLICT:${id}`);
+    });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+    if (code.startsWith("OUT_OF_STOCK")) {
+      revalidatePath(`/admin/orders/${id}`);
+      redirect(`/admin/orders/${id}?error=stock`);
     }
-  } else {
-    await prisma.order.update({ where: { id }, data: { status } });
+    if (code.startsWith("CONFLICT")) {
+      revalidatePath(`/admin/orders/${id}`);
+      redirect(`/admin/orders/${id}?error=conflict`);
+    }
+    if (code.startsWith("NOT_FOUND")) redirect(`/admin/orders/${id}?error=not_found`);
+    throw error;
   }
+
+  const order = await prisma.order.findUnique({ where: { id }, select: { number: true } });
 
   await logActivity({
     actor: admin.email,
     action: "order.status",
     entity: "order",
-    entityId: order.number,
-    summary: `${order.number}: ${STATUS_LABELS[order.status] ?? order.status} → ${STATUS_LABELS[status] ?? status}`,
+    entityId: order?.number ?? String(id),
+    summary: `${order?.number ?? id}: ${STATUS_LABELS[previousStatus] ?? previousStatus} → ${STATUS_LABELS[status] ?? status}`,
   });
 
   revalidatePath("/admin/orders");
   revalidatePath(`/admin/orders/${id}`);
+  // Cancelling hands the reserved copies back, so availability on the
+  // storefront changes too.
+  revalidateHome();
+  revalidateStore("books");
   redirect(`/admin/orders/${id}?updated=1`);
 }
 
@@ -116,5 +136,8 @@ export async function deleteOrder(formData: FormData): Promise<void> {
   });
 
   revalidatePath("/admin/orders");
+  // Deleting a live order returns its copies to stock.
+  revalidateHome();
+  revalidateStore("books");
   redirect("/admin/orders?deleted=1");
 }

@@ -67,3 +67,24 @@ export function normalizeForSearch(text: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+/**
+ * Timezone the shop operates in. Order timestamps are stored in UTC; without
+ * pinning this, `Intl.DateTimeFormat` falls back to the server's zone, which on
+ * Vercel is UTC — so every time in the dashboard was silently three hours
+ * behind the customer's clock.
+ */
+export const SHOP_TIME_ZONE = "Asia/Damascus";
+
+/** Formats an admin-facing timestamp in the shop's timezone. */
+export function formatDateTime(
+  value: Date | string,
+  style: "short" | "medium" = "medium",
+): string {
+  return new Intl.DateTimeFormat("ar-SY", {
+    dateStyle: style === "short" ? "short" : "medium",
+    timeStyle: "short",
+    numberingSystem: "latn",
+    timeZone: SHOP_TIME_ZONE,
+  }).format(typeof value === "string" ? new Date(value) : value);
+}

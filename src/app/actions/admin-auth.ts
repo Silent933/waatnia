@@ -44,7 +44,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   resetRateLimit("login:account", ADMIN_EMAIL);
 
   const store = await cookies();
-  store.set(ADMIN_COOKIE, createSessionToken(admin.id), {
+  store.set(ADMIN_COOKIE, createSessionToken(admin.id, admin.tokenVersion), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
