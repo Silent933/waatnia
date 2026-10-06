@@ -43,8 +43,11 @@ whole `books` table. This is safe to run more than once.
 
 ## 2. Environment variables
 
-`DATABASE_URL` is filled in by the integration (step 1) — verify it is the
-`:5432` Session URL. Two more variables are still manual:
+The database URL is handled automatically: the app and the build wrapper fall
+back to the Supabase integration's `POSTGRES_URL` (session pooler, `:5432`) when
+`DATABASE_URL` is absent, preferring it over `POSTGRES_URL_NON_POOLING` and the
+transaction pooler. **No URL needs to be copied by hand.** Only two variables
+are manual:
 
 Generate the session key first. In PowerShell (Windows PowerShell 5.1):
 
@@ -59,13 +62,14 @@ Pick an admin password of **12+ characters** that is not `change-me-before-deplo
 
 | Variable | Value | Notes |
 | --- | --- | --- |
-| `DATABASE_URL` | filled by the Supabase integration | required — verify it is the `:5432` URL (step 1) |
+| `DATABASE_URL` | (optional) | leave unset — `POSTGRES_URL` is mapped automatically; set it only to override |
 | `AUTH_SECRET` | the 32 random bytes above | required; the app rejects the placeholder |
 | `ADMIN_PASSWORD` | your strong password | read once by the seed |
 | `NEXT_PUBLIC_SITE_URL` | `https://your-domain` | can be set later in `/admin/settings` |
 
 Add `AUTH_SECRET` and `ADMIN_PASSWORD` for **all three** environments
-(Production / Preview / Development).
+(Production / Preview / Development) — these two are **not** created by the
+integration.
 
 `ADMIN_PASSWORD` is only read when the owner account does not yet exist, so
 re-deploys never reset a password you changed. You can delete it from Vercel
@@ -102,8 +106,9 @@ storefront renders.
 1. <https://vercel.com/new> → **Add New… → Project**.
 2. **Import** the `waatnia` repository. Vercel detects Next.js; leave the
    framework preset on **Next.js**.
-3. Add the **Supabase integration** from the marketplace (step 1) so `DATABASE_URL`
-   is filled in, then add `AUTH_SECRET` and `ADMIN_PASSWORD` manually (step 2).
+3. Add the **Supabase integration** from the marketplace (step 1) — its
+   `POSTGRES_URL` is picked up automatically, so there is nothing to copy. Then
+   add only `AUTH_SECRET` and `ADMIN_PASSWORD` manually (step 2).
 4. Leave **Build Command** and **Output Directory** alone. `vercel.json` sets
    `buildCommand` to `npm run build:vercel`, which runs:
    `prisma generate && prisma db push --skip-generate && npm run db:seed && next build`.
@@ -121,9 +126,10 @@ storefront renders.
   Use `npm run db:seed -- --force` locally if you ever deliberately want to
   re-sync from the source PDFs.
 
-If the build fails with `ENOTFOUND` or `FATAL: … not found`, the `DATABASE_URL`
+If the build fails with `ENOTFOUND` or `FATAL: … not found`, the database URL
 is wrong — check the host (`aws-N-…`), the port (`5432`, not `6543`) and the
-password have all come through from the integration.
+password on `POSTGRES_URL` (or on `DATABASE_URL` if you set one) have come
+through from the integration.
 
 ---
 
