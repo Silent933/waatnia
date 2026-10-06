@@ -4,11 +4,3 @@
     "PRISMA_HIDE_UPDATE_MESSAGE": "1"
   }
 }
-{
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ]
-}
