@@ -1,34 +1,36 @@
 # Deploying waatnia — GitHub → Vercel → Supabase
 
-Order matters: **Supabase first** (it produces the `DATABASE_URL` Vercel needs),
-then Vercel (which pulls from GitHub), then the first deploy applies the schema
-and seeds the catalog.
+Order matters: **the database first** (the Vercel build pushes the schema and
+seeds the catalog during `npm run build:vercel`), then Vercel (which pulls from
+GitHub). The easiest route is the **Vercel ↔ Supabase integration**: it creates
+the Supabase project and fills `DATABASE_URL` (and the other `*_URL`/`SUPABASE_*`
+keys) into the Vercel project automatically — no URI to copy by hand.
 
 ---
 
-## 1. Supabase — create the database
+## 1. Create the database via the Vercel ↔ Supabase integration
 
-1. <https://supabase.com/dashboard> → **New project**.
-   - Pick the region closest to your customers. For a Syria/Gulf audience that is
-     usually **Frankfurt** (`eu-central-1`) or **Bahrain**/`Ashburn` — whichever
-     gives the lowest latency from where you are.
+1. In the Vercel project → **Settings → Integrations** → **Marketplace** → search
+   **Supabase** → **Add**. Pick the region closest to your customers; for a
+   Syria/Gulf audience that is usually **Frankfurt** (`eu-central-1`) or
+   **Bahrain**/`Ashburn` — whichever gives the lowest latency from where you are.
 2. Save the database password somewhere safe. **It is not shown again.**
-3. **Connect → Connection method: Session pooler** (port `5432`).
-   > Use the **Session** pooler, not the Transaction pooler. Checkout runs an
-   > interactive transaction, and a transaction-mode pooler (`6543`) cannot serve
-   > one — orders would fail at random.
-4. Copy the URI. It looks like:
-   ```
-   postgresql://postgres.<PROJECT-REF>:<PASSWORD>@aws-0-<REGION>.pooler.supabase.com:5432/postgres
-   ```
-   Turn it into the form Prisma wants — the username is **`prisma.<PROJECT-REF>`**
-   (not `postgres.<PROJECT-REF>`):
-   ```
-   postgresql://prisma.<PROJECT-REF>:<PASSWORD>@aws-0-<REGION>.pooler.supabase.com:5432/postgres?sslmode=require&connection_limit=1
-   ```
+3. The integration writes the connection strings for you. This shop reads only
+   `DATABASE_URL`, but **which** URL lands there matters, because checkout runs an
+   **interactive transaction**:
+   > Use the **Session** (direct) connection, port `5432`, not the Transaction
+   > pooler (`6543`). A transaction-mode pooler cannot serve an interactive
+   > transaction — orders would fail at random.
+   - If the integration set `DATABASE_URL` to the `:6543` pooler, override it with
+     the `:5432` Session URL, e.g.:
+     ```
+     postgresql://postgres.<PROJECT-REF>:<PASSWORD>@aws-0-<REGION>.pooler.supabase.com:5432/postgres?sslmode=require&connection_limit=1
+     ```
    - `sslmode=require` — never connect unencrypted.
-   - `connection_limit=1` — Vercel serverless: one session per instance.
+   - `connection_limit=1` — one session per Vercel serverless instance.
    - The `aws-0-…` cluster index cannot be guessed; copy the host verbatim.
+   The `SUPABASE_*` auth keys the integration also adds are not used here — the
+   admin signs in with a password only, so nothing in this app needs Supabase Auth.
 
 ### Optional but recommended: the search index
 
@@ -41,11 +43,15 @@ whole `books` table. This is safe to run more than once.
 
 ## 2. Environment variables
 
-Generate the session key first. In PowerShell:
+`DATABASE_URL` is filled in by the integration (step 1) — verify it is the
+`:5432` Session URL. Two more variables are still manual:
+
+Generate the session key first. In PowerShell (Windows PowerShell 5.1):
 
 ```powershell
+$rng = [System.Security.Cryptography.RNGCryptoServiceProvider]::Create()
 $b = New-Object byte[] 32
-[System.Security.Cryptography.RandomNumberGenerator]::Fill($b)
+$rng.GetBytes($b)
 [Convert]::ToBase64String($b)
 ```
 
@@ -53,10 +59,13 @@ Pick an admin password of **12+ characters** that is not `change-me-before-deplo
 
 | Variable | Value | Notes |
 | --- | --- | --- |
-| `DATABASE_URL` | the URI from step 1 | required |
+| `DATABASE_URL` | filled by the Supabase integration | required — verify it is the `:5432` URL (step 1) |
 | `AUTH_SECRET` | the 32 random bytes above | required; the app rejects the placeholder |
 | `ADMIN_PASSWORD` | your strong password | read once by the seed |
 | `NEXT_PUBLIC_SITE_URL` | `https://your-domain` | can be set later in `/admin/settings` |
+
+Add `AUTH_SECRET` and `ADMIN_PASSWORD` for **all three** environments
+(Production / Preview / Development).
 
 `ADMIN_PASSWORD` is only read when the owner account does not yet exist, so
 re-deploys never reset a password you changed. You can delete it from Vercel
@@ -93,11 +102,11 @@ storefront renders.
 1. <https://vercel.com/new> → **Add New… → Project**.
 2. **Import** the `waatnia` repository. Vercel detects Next.js; leave the
    framework preset on **Next.js**.
-3. Leave **Build Command** and **Output Directory** alone. `vercel.json` sets
+3. Add the **Supabase integration** from the marketplace (step 1) so `DATABASE_URL`
+   is filled in, then add `AUTH_SECRET` and `ADMIN_PASSWORD` manually (step 2).
+4. Leave **Build Command** and **Output Directory** alone. `vercel.json` sets
    `buildCommand` to `npm run build:vercel`, which runs:
    `prisma generate && prisma db push --skip-generate && npm run db:seed && next build`.
-4. **Environment Variables** → add all four from step 2, for **all three**
-   environments (Production / Preview / Development).
 5. **Deploy**.
 
 ### What the build does, and why it is safe to re-run
@@ -113,7 +122,8 @@ storefront renders.
   re-sync from the source PDFs.
 
 If the build fails with `ENOTFOUND` or `FATAL: … not found`, the `DATABASE_URL`
-is wrong — check the `prisma.` username prefix and the `aws-N-` host index.
+is wrong — check the host (`aws-N-…`), the port (`5432`, not `6543`) and the
+password have all come through from the integration.
 
 ---
 
