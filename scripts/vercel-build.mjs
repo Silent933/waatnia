@@ -2,23 +2,14 @@
  * Vercel build wrapper.
  *
  * Prisma's schema reads env("DATABASE_URL"), but the Supabase integration does
- * not create that variable — it creates POSTGRES_URL (session pooler, :5432),
- * POSTGRES_URL_NON_POOLING (direct) and POSTGRES_PRISMA_URL. When DATABASE_URL
- * is missing, map it from the integration's variables so `prisma db push`, the
- * seed and `next build` all see a working connection without a hand-copied URL.
+ * not create that variable. Map it from the integration's variables — skipping
+ * the :6543 transaction pooler, which cannot serve `prisma db push` — so the
+ * push, the seed and `next build` all see a working connection.
  */
 import { spawnSync } from "node:child_process";
+import { resolveDatabaseUrl } from "./database-url.mjs";
 
-const candidates = [
-  process.env.DATABASE_URL,
-  process.env.POSTGRES_URL,
-  process.env.POSTGRES_URL_NON_POOLING,
-  process.env.POSTGRES_PRISMA_URL,
-];
-
-const url = candidates.find(
-  (value) => value && /^postgres(ql)?:\/\/.+/.test(value.trim()),
-);
+const url = resolveDatabaseUrl();
 
 if (url && !process.env.DATABASE_URL) {
   process.env.DATABASE_URL = url.trim();
@@ -27,7 +18,7 @@ if (url && !process.env.DATABASE_URL) {
 if (!process.env.DATABASE_URL) {
   console.error(
     "No database URL found. Set DATABASE_URL, or let the Supabase integration " +
-      "provide POSTGRES_URL.",
+      "provide POSTGRES_URL_NON_POOLING / POSTGRES_URL.",
   );
   process.exit(1);
 }

@@ -18,20 +18,28 @@ const PLACEHOLDER_FRAGMENTS = [
  * Resolve the connection string.
  *
  * DATABASE_URL is the canonical variable, but the Vercel Supabase integration
- * does not set it — it sets POSTGRES_URL (session pooler, :5432),
- * POSTGRES_URL_NON_POOLING (direct) and POSTGRES_PRISMA_URL. Fall back through
- * the integration's variables so a deploy needs no hand-copied URL, and prefer
- * the session/direct connections over the transaction pooler: checkout runs an
- * interactive transaction, which a :6543 transaction-mode pooler cannot serve.
+ * does not set it. The integration's variables are POSTGRES_URL and
+ * POSTGRES_PRISMA_URL (transaction pooler, :6543) and the direct
+ * POSTGRES_URL_NON_POOLING (:5432). A transaction-mode pooler cannot serve an
+ * interactive transaction — checkout runs one — so skip `:6543` and prefer the
+ * direct/session connection. Keep in sync with scripts/database-url.mjs.
  */
 function databaseUrl(): string {
-  const candidate =
-    process.env.DATABASE_URL ??
-    process.env.POSTGRES_URL ??
-    process.env.POSTGRES_URL_NON_POOLING ??
-    process.env.POSTGRES_PRISMA_URL ??
-    "";
-  return candidate.trim();
+  const candidates = [
+    process.env.DATABASE_URL,
+    process.env.POSTGRES_URL_NON_POOLING,
+    process.env.DIRECT_URL,
+    process.env.POSTGRES_URL,
+    process.env.POSTGRES_PRISMA_URL,
+  ].filter((value): value is string => Boolean(value));
+
+  if (candidates.some((url) => /:6543\b/.test(url))) {
+    return (
+      candidates.find((url) => !/:6543\b/.test(url))?.trim() ??
+      candidates[0].trim()
+    );
+  }
+  return (candidates[0] ?? "").trim();
 }
 
 /** True only when a real database URL is configured (rejects the .env.example placeholders). */

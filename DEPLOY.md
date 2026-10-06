@@ -15,22 +15,17 @@ keys) into the Vercel project automatically — no URI to copy by hand.
    Syria/Gulf audience that is usually **Frankfurt** (`eu-central-1`) or
    **Bahrain**/`Ashburn` — whichever gives the lowest latency from where you are.
 2. Save the database password somewhere safe. **It is not shown again.**
-3. The integration writes the connection strings for you. This shop reads only
-   `DATABASE_URL`, but **which** URL lands there matters, because checkout runs an
-   **interactive transaction**:
-   > Use the **Session** (direct) connection, port `5432`, not the Transaction
-   > pooler (`6543`). A transaction-mode pooler cannot serve an interactive
-   > transaction — orders would fail at random.
-   - If the integration set `DATABASE_URL` to the `:6543` pooler, override it with
-     the `:5432` Session URL, e.g.:
-     ```
-     postgresql://postgres.<PROJECT-REF>:<PASSWORD>@aws-0-<REGION>.pooler.supabase.com:5432/postgres?sslmode=require&connection_limit=1
-     ```
-   - `sslmode=require` — never connect unencrypted.
-   - `connection_limit=1` — one session per Vercel serverless instance.
-   - The `aws-0-…` cluster index cannot be guessed; copy the host verbatim.
-   The `SUPABASE_*` auth keys the integration also adds are not used here — the
-   admin signs in with a password only, so nothing in this app needs Supabase Auth.
+3. The integration writes the connection strings for you. In current versions it
+   puts `POSTGRES_URL`/`POSTGRES_PRISMA_URL` on the **transaction pooler (`:6543`)**
+   and `POSTGRES_URL_NON_POOLING` on the **direct connection (`:5432`)**. This app
+   resolves the URL automatically — it skips any `:6543` URL and uses the
+   `:5432` direct connection instead, because checkout runs an **interactive
+   transaction** and `prisma db push` needs a direct connection:
+   > A transaction-mode pooler cannot serve an interactive transaction — orders
+   > would fail at random.
+   **No URL has to be copied or edited by hand.** The `SUPABASE_*` auth keys the
+   integration also adds are not used here — the admin signs in with a password
+   only, so nothing in this app needs Supabase Auth.
 
 ### Optional but recommended: the search index
 
@@ -44,10 +39,10 @@ whole `books` table. This is safe to run more than once.
 ## 2. Environment variables
 
 The database URL is handled automatically: the app and the build wrapper fall
-back to the Supabase integration's `POSTGRES_URL` (session pooler, `:5432`) when
-`DATABASE_URL` is absent, preferring it over `POSTGRES_URL_NON_POOLING` and the
-transaction pooler. **No URL needs to be copied by hand.** Only two variables
-are manual:
+back to the Supabase integration's variables — skipping the `:6543` transaction
+pooler and using the direct `POSTGRES_URL_NON_POOLING` (`:5432`) — so checkout's
+interactive transactions keep working and `prisma db push` can run.
+**No URL needs to be copied by hand.** Only two variables are manual:
 
 Generate the session key first. In PowerShell (Windows PowerShell 5.1):
 
@@ -127,8 +122,8 @@ storefront renders.
   re-sync from the source PDFs.
 
 If the build fails with `ENOTFOUND` or `FATAL: … not found`, the database URL
-is wrong — check the host (`aws-N-…`), the port (`5432`, not `6543`) and the
-password on `POSTGRES_URL` (or on `DATABASE_URL` if you set one) have come
+is wrong — check the host (`aws-N-…`) and the password on
+`POSTGRES_URL_NON_POOLING` (or on `DATABASE_URL` if you set one) have come
 through from the integration.
 
 ---
