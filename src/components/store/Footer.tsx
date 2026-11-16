@@ -122,7 +122,7 @@ export default function Footer({
       <div className="border-t border-line">
         <div className="container-page flex flex-wrap items-center justify-between gap-2 py-4 text-xs text-muted">
           <p>
-            © {year} {storeName}. {d.footer.rights}.
+          © {year} {lang === "ar" ? "نواة" : "Nawah"}. {d.footer.rights}.
           </p>
           <Link href="/admin" className="transition hover:text-accent">
             {d.nav.admin}
