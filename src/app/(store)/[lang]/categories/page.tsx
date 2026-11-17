@@ -4,12 +4,12 @@ import { notFound } from "next/navigation";
 
 import { getDictionary } from "@/lib/i18n/dictionaries";
 import { listCategories } from "@/lib/repo";
-import { isLocale } from "@/lib/types";
+import { DEFAULT_LOCALE, isLocale } from "@/lib/types";
 
 export async function generateMetadata({ params }: PageProps<"/[lang]/categories">): Promise<Metadata> {
   const { lang } = await params;
   if (!isLocale(lang)) return {};
-  return { title: getDictionary(lang).nav.categories };
+  return {     title: getDictionary(lang).nav.categories,     alternates: {       canonical: `/${lang}/categories`,       languages: {         ar: "/ar/categories",         en: "/en/categories",         "x-default": `/${DEFAULT_LOCALE}/categories`,       },     },   };
 }
 
 export default async function CategoriesPage({ params }: PageProps<"/[lang]/categories">) {
