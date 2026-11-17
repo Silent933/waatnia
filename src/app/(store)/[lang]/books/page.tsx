@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/books">): 
   const { lang } = await params;
   if (!isLocale(lang)) return {};
   const d = getDictionary(lang as Locale);
-  return {     title: d.books.title,     description: d.books.subtitle,     // The layout's canonical points at `/${lang}`; every page must replace it     // with its own path or Google treats the catalog as the homepage.     alternates: {       canonical: `/${lang}/books`,       languages: {         ar: "/ar/books",         en: "/en/books",         "x-default": `/${DEFAULT_LOCALE}/books`,       },     },   };
+  return { title: d.books.title, description: d.books.subtitle, alternates: { canonical: `/${lang}/books`, languages: { ar: "/ar/books", en: "/en/books", "x-default": `/${DEFAULT_LOCALE}/books` } } };
 }
 
 export default async function BooksPage({ params, searchParams }: PageProps<"/[lang]/books">) {
