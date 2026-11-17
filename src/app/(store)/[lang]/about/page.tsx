@@ -4,12 +4,12 @@ import { notFound } from "next/navigation";
 
 import { getDictionary } from "@/lib/i18n/dictionaries";
 import { getCatalogStats } from "@/lib/repo";
-import { isLocale } from "@/lib/types";
+import { DEFAULT_LOCALE, isLocale } from "@/lib/types";
 
 export async function generateMetadata({ params }: PageProps<"/[lang]/about">): Promise<Metadata> {
   const { lang } = await params;
   if (!isLocale(lang)) return {};
-  return { title: getDictionary(lang).about.title, description: getDictionary(lang).about.body };
+  return {     title: getDictionary(lang).about.title,     description: getDictionary(lang).about.body,     alternates: {       canonical: `/${lang}/about`,       languages: {         ar: "/ar/about",         en: "/en/about",         "x-default": `/${DEFAULT_LOCALE}/about`,       },     },   };
 }
 
 export default async function AboutPage({ params }: PageProps<"/[lang]/about">) {
