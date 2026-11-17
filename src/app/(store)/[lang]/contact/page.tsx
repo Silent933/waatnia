@@ -4,12 +4,12 @@ import { notFound } from "next/navigation";
 import { ContactForm } from "@/components/store/ContactForm";
 import { getDictionary } from "@/lib/i18n/dictionaries";
 import { getSettings } from "@/lib/settings";
-import { isLocale } from "@/lib/types";
+import { DEFAULT_LOCALE, isLocale } from "@/lib/types";
 
 export async function generateMetadata({ params }: PageProps<"/[lang]/contact">): Promise<Metadata> {
   const { lang } = await params;
   if (!isLocale(lang)) return {};
-  return { title: getDictionary(lang).contact.title, description: getDictionary(lang).contact.subtitle };
+  return {     title: getDictionary(lang).contact.title,     description: getDictionary(lang).contact.subtitle,     alternates: {       canonical: `/${lang}/contact`,       languages: {         ar: "/ar/contact",         en: "/en/contact",         "x-default": `/${DEFAULT_LOCALE}/contact`,       },     },   };
 }
 
 export default async function ContactPage({ params }: PageProps<"/[lang]/contact">) {
