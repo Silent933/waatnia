@@ -13,7 +13,7 @@ import { type CategoryView, type Locale } from "@/lib/types";
 function LocaleLink({ locale, pathname }: { locale: Locale; pathname: string }) {
   const segments = pathname.split("/");
   const rest = segments.slice(2).join("/");
-  const href = `/${locale}${rest ? `/${rest}` : ""}`;
+  const href = `/${locale === "ar" ? "en" : "ar"}${rest ? `/${rest}` : ""}`;
   const other: Locale = locale === "ar" ? "en" : "ar";
   const d = getDictionary(locale);
 
