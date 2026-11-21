@@ -26,10 +26,21 @@ export async function generateMetadata({
   const book = await getBookBySlug(slug);
   if (!book) return { title: d.notFound.title, robots: { index: false, follow: false } };
 
-  const description = (lang === "ar" ? book.descAr : book.descEn).slice(0, 200);
+  const categoryName = lang === "ar" ? book.categoryAr : book.categoryEn;
+  const titleBase = lang === "ar" ? book.titleAr || book.titleEn : book.titleEn;
+  const title = categoryName ? `${titleBase} — ${categoryName}` : titleBase;
+  const story = (lang === "ar" ? book.descAr : book.descEn).replace(/\s+/g, " ").trim();
+  const description = [
+    story.slice(0, 120),
+    categoryName,
+    book.isCd ? d.books.cd : null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+    .slice(0, 160);
 
   return {
-    title: `${book.titleEn}${book.titleAr ? ` — ${book.titleAr}` : ""}`,
+    title,
     description,
     alternates: {
       canonical: `/${lang}/books/${book.slug}`,
@@ -41,7 +52,7 @@ export async function generateMetadata({
     },
     openGraph: {
       type: "book",
-      title: book.titleEn,
+      title,
       description,
       images: [{ url: book.cover }],
       locale: lang === "ar" ? "ar_SY" : "en_US",
@@ -73,25 +84,42 @@ export default async function BookDetailPage({ params }: PageProps<"/[lang]/book
   const outOfStock = book.stock <= 0;
   const priceSar = (book.priceCents / 100).toFixed(2);
 
+  const pageUrl = `${siteUrl}/${lang}/books/${book.slug}`;
   const jsonLd = {
     "@context": "https://schema.org",
-    "@type": "Book",
-    name: book.titleEn,
-    alternateName: book.titleAr || undefined,
-    description: book.descEn || book.descAr,
+    "@type": ["Book", "Product"],
+    name: lang === "ar" ? book.titleAr || book.titleEn : book.titleEn,
+    alternateName: lang === "ar" ? book.titleEn : book.titleAr || undefined,
+    description: (lang === "ar" ? book.descAr : book.descEn) || book.descEn || book.descAr,
     image: [`${siteUrl}${book.cover}`],
     inLanguage: ["ar", "en"],
-    bookFormat: "https://schema.org/Audiobook",
+    bookFormat: "https://schema.org/Paperback",
     ...(book.author ? { author: { "@type": "Person", name: book.author } } : {}),
     ...(category ? { genre: lang === "ar" ? category.nameAr : category.nameEn } : {}),
+    ...(book.isCd
+      ? {
+          additionalProperty: {
+            "@type": "PropertyValue",
+            name: "CD",
+            value: d.books.cd,
+          },
+        }
+      : {}),
+    mainEntityOfPage: pageUrl,
     offers: {
       "@type": "Offer",
-      url: `${siteUrl}/${lang}/books/${book.slug}`,
+      url: pageUrl,
       price: priceSar,
       priceCurrency: "SAR",
+      itemCondition: "https://schema.org/NewCondition",
       availability: outOfStock
         ? "https://schema.org/OutOfStock"
         : "https://schema.org/InStock",
+      seller: {
+        "@type": "Organization",
+        name: lang === "ar" ? settings.storeNameAr : settings.storeNameEn,
+        url: siteUrl,
+      },
     },
   };
 
@@ -167,14 +195,43 @@ export default async function BookDetailPage({ params }: PageProps<"/[lang]/book
           <div className="mt-8">
             <h2 className="text-lg">{d.book.description}</h2>
             <div className="mt-3 space-y-4">
-              <p className="text-ink-soft">{book.descEn}</p>
-              {book.descAr && (
-                <p className="prose-ar text-ink-soft" dir="rtl">
+              <p
+                className={lang === "ar" ? "prose-ar text-ink-soft" : "text-ink-soft"}
+                dir={lang === "ar" ? "rtl" : undefined}
+              >
+                {lang === "ar" ? book.descAr || book.descEn : book.descEn || book.descAr}
+              </p>
+              {lang === "ar" && book.descEn && book.descEn !== book.descAr && (
+                <p className="latin text-sm text-muted" dir="ltr">
+                  {book.desen}
+                </>
+             )}
+              {lang === "en" && book.descAr && book.descAr !== book.descEn && (
+                <p className="prose-ar text-sm text-muted" dir="rtl">
                   {book.descAr}
                 </p>
               )}
             </div>
           </div>
+
+          <section className="card mt-6 p-5">
+            <h2 className="text-lg">{d.book.contextTitle}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+              {lang === "ar"
+                ? `إذا كنت تبحث عن ${category ? `قصص ${category.nameAr}` : "قصة مميزة"} أو عن رواية ${book.titleAr || book.titleEn}، فأنت في المكان الصحيح. اكتشف القصة وتصفّح عناوين مشابهة في الكتالوج.`
+                : `Looking for ${category ? `${category.nameEn} stories` : "a great story"} or the full story of ${book.titleEn}? Discover it here and browse similar titles in the catalog.`}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {category && (
+                <Link href={`/${lang}/books?category=${category.slug}`} className="badge badge-muted">
+                  {lang === "ar" ? category.nameAr : category.nameEn}
+                </Link>
+              )}
+              <Link href={`/${lang}/books`} className="badge badge-muted">
+                {d.nav.catalog}
+              </Link>
+            </div>
+          </section>
 
           {details.length > 0 && (
             <div className="card mt-8 divide-y divide-line">
