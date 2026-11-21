@@ -203,8 +203,8 @@ export default async function BookDetailPage({ params }: PageProps<"/[lang]/book
               </p>
               {lang === "ar" && book.descEn && book.descEn !== book.descAr && (
                 <p className="latin text-sm text-muted" dir="ltr">
-                  {book.desen}
-                </>
+                  {book.descEn}
+                </p>
              )}
               {lang === "en" && book.descAr && book.descAr !== book.descEn && (
                 <p className="prose-ar text-sm text-muted" dir="rtl">
